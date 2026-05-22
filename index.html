@@ -5,63 +5,70 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NutriTracker Fast</title>
     <style>
-        body { font-family: sans-serif; background: #fff; padding: 10px; margin: 0; }
-        input { width: 100%; padding: 15px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
-        .res-item { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #eee; }
-        .res-item img { width: 40px; height: 40px; margin-right: 10px; }
+        body { font-family: -apple-system, sans-serif; background: #fff; padding: 10px; margin: 0; }
+        input { width: 100%; padding: 15px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; }
+        .res { padding: 10px; border-bottom: 1px solid #eee; display: flex; align-items: center; }
+        .res img { width: 40px; height: 40px; margin-right: 10px; object-fit: cover; }
+        .editor { display: none; padding-top: 20px; }
+        .log-item { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #eee; }
     </style>
 </head>
 <body>
 
-<input type="text" id="q" placeholder="Názov potraviny..." onkeydown="if(event.key==='Enter') search()">
+<input type="text" id="q" placeholder="Hľadať potravinu..." oninput="dbSearch()">
 <div id="results"></div>
-<div id="editor" style="display:none; padding-top:20px;">
+
+<div id="editor" class="editor">
     <h3 id="pName"></h3>
-    <input type="number" id="grams" value="100" oninput="calc()">
-    <div id="macros" style="padding:10px 0; font-weight:bold;"></div>
-    <button style="width:100%; padding:15px; background:green; color:white; border:none;" onclick="add()">Pridať</button>
+    <input type="number" id="grams" value="100" oninput="recalc()">
+    <div id="macros" style="margin:10px 0; font-weight:bold;"></div>
+    <button style="width:100%; padding:15px; background:green; color:white; border:none; border-radius:8px;" onclick="add()">Pridať do denníka</button>
 </div>
 
+<div id="logArea"></div>
+
 <script>
-    let currentP = null;
-    let log = JSON.parse(localStorage.getItem('log') || '[]');
+    let timer, activeP, history = JSON.parse(localStorage.getItem('h') || '[]');
 
-    function search() {
-        let q = document.getElementById('q').value;
-        fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1&page_size=5`)
-        .then(r => r.json()).then(d => {
-            document.getElementById('results').innerHTML = d.products.map(p => 
-                `<div class="res-item" onclick='loadProduct(${JSON.stringify({
-                    name: p.product_name,
-                    kcal: p.nutriments["energy-kcal_100g"] || 0,
-                    b: p.nutriments["proteins_100g"] || 0,
-                    s: p.nutriments["carbohydrates_100g"] || 0,
-                    t: p.nutriments["fat_100g"] || 0
-                })})'>
-                    <img src="${p.image_small_url || ''}"> ${p.product_name || "Bez názvu"}
-                </div>`).join('');
-        });
+    function dbSearch() {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            let q = document.getElementById('q').value;
+            if (q.length < 3) return;
+            fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${q}&json=1&page_size=5&fields=product_name,nutriments,image_small_url`)
+            .then(r => r.json()).then(d => {
+                document.getElementById('results').innerHTML = d.products.map(p => 
+                    `<div class="res" onclick='select(${JSON.stringify(p)})'>
+                        <img src="${p.image_small_url || ''}"> ${p.product_name || "Bez názvu"}
+                    </div>`).join('');
+            });
+        }, 300);
     }
 
-    function loadProduct(p) {
-        currentP = p;
-        document.getElementById('pName').innerText = p.name;
-        document.getElementById('editor').style.display = 'block';
+    function select(p) {
+        activeP = { name: p.product_name, kcal: p.nutriments["energy-kcal_100g"]||0, b: p.nutriments["proteins_100g"]||0 };
+        document.getElementById('pName').innerText = activeP.name;
         document.getElementById('results').innerHTML = '';
-        calc();
+        document.getElementById('editor').style.display = 'block';
+        recalc();
     }
 
-    function calc() {
+    function recalc() {
         let f = document.getElementById('grams').value / 100;
-        document.getElementById('macros').innerHTML = `Kcal: ${(currentP.kcal*f).toFixed(0)} | B: ${(currentP.b*f).toFixed(1)}g`;
+        document.getElementById('macros').innerHTML = `Kcal: ${(activeP.kcal*f).toFixed(0)} | B: ${(activeP.b*f).toFixed(1)}g`;
     }
 
     function add() {
-        log.push({n: currentP.name, v: document.getElementById('macros').innerText});
-        localStorage.setItem('log', JSON.stringify(log));
-        alert("Pridané!");
+        history.push({n: activeP.name, v: document.getElementById('macros').innerText});
+        localStorage.setItem('h', JSON.stringify(history));
         document.getElementById('editor').style.display = 'none';
+        renderLog();
     }
+
+    function renderLog() {
+        document.getElementById('logArea').innerHTML = history.map(i => `<div class="log-item"><span>${i.n}</span><span>${i.v}</span></div>`).join('');
+    }
+    renderLog();
 </script>
 </body>
 </html>
