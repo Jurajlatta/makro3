@@ -3,48 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NutriTab Pro</title>
+    <title>NutriTab Ultra</title>
     <style>
-        body { font-family: -apple-system, sans-serif; margin: 0; padding: 15px; background: #f2f2f7; }
-        #q { width: 100%; padding: 15px; font-size: 16px; border: 1px solid #ccc; border-radius: 12px; box-sizing: border-box; }
-        .res { padding: 15px; border-bottom: 1px solid #eee; background: white; margin-top: 8px; border-radius: 10px; display: flex; align-items: center; }
-        .res img { width: 50px; height: 50px; margin-right: 15px; object-fit: contain; }
+        body { font-family: sans-serif; padding: 10px; }
+        #q { width: 100%; padding: 15px; border: 2px solid #007aff; border-radius: 8px; font-size: 16px; }
+        .res { padding: 15px; border-bottom: 1px solid #eee; }
     </style>
 </head>
 <body>
 
-<input type="text" id="q" placeholder="Hľadať potravinu (napr. Tvaroh)..." oninput="fastSearch()">
+<input type="text" id="q" placeholder="Píš názov..." oninput="search()">
 <div id="results"></div>
 
 <script>
-    let debounce;
-    function fastSearch() {
-        clearTimeout(debounce);
+    let timer;
+    function search() {
+        clearTimeout(timer);
         const q = document.getElementById('q').value;
-        if (q.length < 3) { document.getElementById('results').innerHTML = ''; return; }
+        
+        // Znížili sme limit na 2 znaky, aby to reagovalo okamžite
+        if (q.length < 2) return; 
 
-        debounce = setTimeout(async () => {
-            // Použijeme špecifickejšiu URL pre SK trh
-            const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=10&lc=sk&cc=sk`;
+        timer = setTimeout(async () => {
+            // Používame "search" endpoint, ktorý je tolerantnejší k preklepom
+            const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1&page_size=5&lc=sk`;
             
             try {
-                const res = await fetch(url);
-                const data = await res.json();
+                const response = await fetch(url);
+                const data = await response.json();
                 
-                // OČISTA: Vyhodíme všetko, čo obsahuje TV alebo je nezmyselné pre potraviny
-                const filtered = data.products.filter(p => {
-                    const name = (p.product_name || "").toUpperCase();
-                    return !name.includes("TV") && name.length > 3;
-                });
-
-                document.getElementById('results').innerHTML = filtered.map(p => `
-                    <div class="res">
-                        <img src="${p.image_small_url || ''}" onerror="this.style.display='none'">
-                        <span>${p.product_name || 'Neznámy produkt'}</span>
-                    </div>
-                `).join('');
-            } catch (e) { console.error(e); }
-        }, 300);
+                if (data.products && data.products.length > 0) {
+                    document.getElementById('results').innerHTML = data.products.map(p => 
+                        `<div class="res">${p.product_name || "Produkt bez mena"}</div>`
+                    ).join('');
+                } else {
+                    document.getElementById('results').innerHTML = "<div class='res'>Nenašlo sa nič...</div>";
+                }
+            } catch (err) {
+                console.log("Chyba:", err);
+            }
+        }, 200); // 200ms je dostatočne rýchle pre "živý" pocit
     }
 </script>
 </body>
