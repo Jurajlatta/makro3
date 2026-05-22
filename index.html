@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NutriTracker Pro</title>
+    <title>NutriTracker</title>
     <style>
         body { font-family: -apple-system, sans-serif; background: #f2f2f7; padding: 15px; margin: 0; }
         .card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; }
-        #results { margin-top: 10px; border-top: 1px solid #eee; }
-        .res-item { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; }
+        input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 8px; background: #007aff; color: white; font-weight: bold; font-size: 16px; }
+        .res-item { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #eee; }
         .res-item img { width: 50px; height: 50px; object-fit: cover; margin-right: 15px; border-radius: 5px; }
         .log-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
     </style>
@@ -17,15 +17,16 @@
 <body>
 
 <div class="card">
-    <input type="text" id="q" placeholder="Hľadať potravinu..." oninput="autoSearch()" onkeydown="if(event.key==='Enter') search()">
+    <input type="text" id="q" placeholder="Názov potraviny..." onkeydown="if(event.key==='Enter') search()">
+    <button onclick="search()">Vyhľadať</button>
     <div id="results"></div>
 </div>
 
 <div class="card" id="resArea" style="display:none;">
     <h3 id="pName"></h3>
     <input type="number" id="grams" placeholder="Gramáž (g)" oninput="recalc()">
-    <div id="macros" style="margin: 10px 0; font-weight: 500;"></div>
-    <button style="width:100%; padding:12px; background:#34c759; color:white; border:none; border-radius:8px;" onclick="save()">Pridať do denníka</button>
+    <div id="macros" style="margin: 10px 0; font-weight: bold;"></div>
+    <button style="background:#34c759" onclick="save()">Pridať do denníka</button>
 </div>
 
 <div class="card">
@@ -37,20 +38,20 @@
     let activeP = null;
     let history = JSON.parse(localStorage.getItem('h')) || [];
 
-    function autoSearch() {
+    function search() {
         let q = document.getElementById('q').value;
-        if (q.length < 3) return;
         fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1&page_size=5`)
         .then(r => r.json()).then(d => {
             document.getElementById('results').innerHTML = d.products.map(p => 
-                `<div class="res-item" onclick="selectP(${JSON.stringify(p).replace(/"/g, '&quot;')})">
+                `<div class="res-item" onclick='selectP(${JSON.stringify(p).replace(/'/g, "")})'>
                     <img src="${p.image_small_url || 'https://via.placeholder.com/50'}">
-                    <span>${p.product_name || "Neznámy produkt"}</span>
+                    <span>${p.product_name || "Bez názvu"}</span>
                 </div>`).join('');
         });
     }
 
-    function selectP(p) {
+    // Pozor: Funkcia selectP musí byť v globálnom rozsahu
+    window.selectP = function(p) {
         activeP = {
             name: p.product_name,
             kcal: p.nutriments["energy-kcal_100g"] || 0,
@@ -60,10 +61,10 @@
         };
         document.getElementById('pName').innerText = activeP.name;
         document.getElementById('resArea').style.display = 'block';
-        document.getElementById('results').innerHTML = '';
         document.getElementById('grams').value = 100;
+        document.getElementById('results').innerHTML = '';
         recalc();
-    }
+    };
 
     function recalc() {
         let g = document.getElementById('grams').value || 0;
