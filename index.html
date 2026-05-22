@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+<!-- Inštrukcie pre iOS, aby sa web správal ako natívna appka -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Makrá">
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+<style>
+body { font-family: sans-serif; background: #f2f2f7; margin: 0; padding: 15px; padding-top: env(safe-area-inset-top); }
+.b { background: white; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
+input, button { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; }
+button { background: #007af5; color: white; border: none; border-radius: 8px; font-weight: bold; }
+.f { display: flex; gap: 5px; }
+.s { flex: 1; text-align: center; background: #eee; padding: 10px; border-radius: 8px; }
+h3 { margin-top: 0; }
+#pop { display: none; background: #eef2f7; padding: 15px; border-radius: 8px; margin-top: 10px; }
+#v { width: 100%; background: #000; border-radius: 8px; overflow: hidden; margin-top: 10px; display: none; }
+</style>
+</head>
+<body>
+
+<div class="b">
+<h3>Naskenuj čiarový kód</h3>
+<button onclick="st()">Zapnúť kameru</button>
+<div id="v"></div>
+
+<div id="pop">
+<h4 id="rn" style="margin-top:0;"></h4>
+<label>Gramy:</label>
+<input type="number" id="g" value="100">
+<button onclick="addI()" style="background:#34c759; margin-top:10px;">Pridať ingredienciu</button>
+</div>
+</div>
+
+<div class="b">
+<h3>Aktuálny chod</h3>
+<div id="c" style="margin-bottom: 10px; font-size: 14px;"></div>
+<button onclick="u()">Uložiť celý chod</button>
+</div>
+
+<div class="b">
+<h3>Dnešný príjem</h3>
+<div class="f">
+<div class="s"><h4 id="tk" style="margin:0;">0</h4>kcal</div>
+<div class="s"><h4 id="tb" style="margin:0;">0</h4>B</div>
+<div class="s"><h4 id="ts" style="margin:0;">0</h4>S</div>
+<div class="s"><h4 id="tt" style="margin:0;">0</h4>T</div>
+</div>
+</div>
+
+<div class="b">
+<div id="h" style="font-size: 14px;"></div>
+</div>
+
+<script>
+let d = JSON.parse(localStorage.getItem("d")) || {};
+let a = [];
+let tmp = null;
+let qr = new Html5Qrcode("v");
+
+function cl() {
+    let n = new Date();
+    for(let k in d) {
+        let p = k.split(".");
+        let o = new Date(p[2], p[1]-1, p[0]);
+        if((n - o) / 86400000 > 30) {
+            delete d[k];
+        }
+    }
+    localStorage.setItem("d", JSON.stringify(d));
+}
+cl();
+
+function gD() {
+    let x = new Date();
+    x.setHours(x.getHours() - 2);
+    return x.toLocaleDateString("sk-SK");
+}
+
+function st() {
+    document.getElementById("v").style.display = "block";
+    qr.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 150 } },
+        bc => {
+            qr.stop().then(() => {
+                document.getElementById("v").style.display = "none";
+                loadP(bc);
+            });
+        },
+        err => {}
+    ).catch(e => {
+        alert("Skontroluj HTTPS alebo povolenie kamery");
+    });
+}
+
+function loadP(bc) {
+    fetch("https://world.openfoodfacts.org/api/v0/product/" + bc + ".json")
+    .then(r => r.json())
+    .then(dt => {
+        if(dt.status === 1) {
+            let p = dt.product;
+            let n = p.nutriments;
+            tmp = {
+                n: p.product_name || "Neznáme",
+                k: n["energy-kcal_100g"] || 0,
+                b: n.proteins_100g || 0,
+                s: n.carbohydrates_100g || 0,
+                t: n.fat_100g || 0
+            };
+            document.getElementById("rn").innerText = tmp.n;
+            document.getElementById("g").value = 100;
+            document.getElementById("pop").style.display = "block";
+        } else {
+            alert("Produkt sa nenašiel");
+        }
+    });
+}
+
+function addI() {
+    let g = parseFloat(document.getElementById("g").value);
+    let m = g / 100;
+    a.push({ n: tmp.n, g: g, b: tmp.b*m, s: tmp.s*m, t: tmp.t*m, k: tmp.k*m });
+    document.getElementById("pop").style.display = "none";
+    tmp = null;
+    rC();
+}
+
+function rC() {
+    let ht = "";
+    for(let i=0; i<a.length; i++) {
+        ht += "• " + a[i].n + " (" + a[i].g + "g)<br>";
+    }
+    document.getElementById("c").innerHTML = ht;
+}
+
+function u() {
+    if(a.length === 0) return;
+    let dt = gD();
+    if(!d[dt]) d[dt] = [];
+    d[dt].push(a);
+    a = [];
+    localStorage.setItem("d", JSON.stringify(d));
+    rC();
+    rH();
+}
+
+function rH() {
+    let ht = "";
+    let td = gD();
+    let tk=0, tb=0, ts=0, tt=0;
+    
+    let kArr = Object.keys(d).sort((x, y) => {
+        let px = x.split("."), py = y.split(".");
+        return new Date(py[2], py[1]-1, py[0]) - new Date(px[2], px[1]-1, px[0]);
+    });
+
+    for (let x=0; x<kArr.length; x++) {
+        let k = kArr[x];
+        let dk=0, db=0, ds=0, dt=0;
+        
+        for(let i=0; i<d[k].length; i++) {
+            for(let j=0; j<d[k][i].length; j++) {
+                dk += d[k][i][j].k; db += d[k][i][j].b; ds += d[k][i][j].s; dt += d[k][i][j].t;
+            }
+        }
+        
+        if(k === td) {
+            tk=dk; tb=db; ts=ds; tt=dt;
+        } else {
+            ht += "<b>" + k + "</b> - B: " + db.toFixed(1) + "g<br>";
+        }
+    }
+    
+    document.getElementById("tk").innerText = tk.toFixed(0);
+    document.getElementById("tb").innerText = tb.toFixed(1) + "g";
+    document.getElementById("ts").innerText = ds.toFixed(1) + "g";
+    document.getElementById("tt").innerText = dt.toFixed(1) + "g";
+    document.getElementById("h").innerHTML = ht;
+}
+
+rH();
+</script>
+</body>
+</html>
