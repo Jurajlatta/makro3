@@ -3,117 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>NutriTracker Pro</title>
-    <script src="https://unpkg.com/html5-qrcode"></script>
+    <title>NutriTracker</title>
     <style>
         body { font-family: -apple-system, sans-serif; background: #f2f2f7; padding: 15px; margin: 0; }
-        .card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
-        button { width: 100%; padding: 14px; margin: 6px 0; border: none; border-radius: 10px; background: #007aff; color: white; font-weight: 600; font-size: 16px; }
-        .btn-green { background: #34c759; }
-        .delete-btn { background: #ff3b30; color: white; border: none; padding: 6px 12px; border-radius: 6px; }
-        .log-item { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 10px 0; }
-        #camera-container { width: 100%; margin: 10px 0; display: none; }
+        button { width: 100%; padding: 14px; border: none; border-radius: 8px; background: #007aff; color: white; font-weight: bold; font-size: 16px; margin-top: 5px; }
+        .log-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; align-items: center; }
+        .delete-btn { background: #ff3b30; color: white; border: none; padding: 6px 10px; border-radius: 6px; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <input type="text" id="searchInput" placeholder="Názov potraviny...">
-    <button onclick="searchByName()">🔍 Vyhľadať podľa názvu</button>
-    <button onclick="toggleScanner()" id="scanBtn">📸 Zapnúť skener</button>
-    <div id="camera-container"><div id="reader"></div></div>
+    <input type="text" id="q" placeholder="Názov potraviny...">
+    <button onclick="search()">Vyhľadať v databáze</button>
 </div>
 
-<div class="card" id="resultArea" style="display:none;">
-    <h3 id="productName" style="margin-top:0"></h3>
-    <input type="number" id="grams" placeholder="Koľko gramov?" oninput="calcMacros()">
-    <p id="macroPreview" style="font-size: 14px; color: #555;"></p>
-    <button class="btn-green" onclick="addConfirmed()">✅ Pridať do denníka</button>
+<div class="card" id="resArea" style="display:none;">
+    <h3 id="pName"></h3>
+    <input type="number" id="grams" placeholder="Gramáž (g)" oninput="recalc()">
+    <div id="macros" style="font-size: 15px; font-weight: 500; margin: 10px 0; color: #333;"></div>
+    <button style="background:#34c759" onclick="save()">Pridať do denníka</button>
 </div>
 
 <div class="card">
-    <h3>Dnes (Celkom)</h3>
-    <div id="totalMacros" style="font-weight:bold; font-size: 15px; margin-bottom: 10px;">Kcal: 0 | B: 0 | S: 0 | T: 0</div>
-    <div id="logList"></div>
+    <h3>Dnešný príjem</h3>
+    <div id="log"></div>
 </div>
 
 <script>
-    let scanner = null;
-    let activeProduct = null;
-    let dailyLog = JSON.parse(localStorage.getItem('dailyLog')) || [];
+    let activeP = null;
+    let history = JSON.parse(localStorage.getItem('h')) || [];
 
-    function toggleScanner() {
-        let cont = document.getElementById('camera-container');
-        if (cont.style.display === 'block') {
-            scanner.stop();
-            cont.style.display = 'none';
-        } else {
-            cont.style.display = 'block';
-            scanner = new Html5Qrcode("reader");
-            scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 200 }, (code) => {
-                scanner.stop();
-                cont.style.display = 'none';
-                fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`)
-                .then(r => r.json()).then(data => data.status === 1 ? handleProduct(data.product) : alert("Produkt nenájdený."));
-            });
-        }
-    }
-
-    function searchByName() {
-        let q = document.getElementById('searchInput').value;
-        fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${q}&json=1`)
-        .then(r => r.json()).then(data => {
-            if (data.products && data.products.length > 0) handleProduct(data.products[0]);
-            else alert("Nenašlo sa.");
+    function search() {
+        let q = document.getElementById('q').value;
+        fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1`)
+        .then(r => r.json()).then(d => {
+            if (d.products.length > 0) {
+                let p = d.products[0];
+                activeP = {
+                    name: p.product_name || "Neznámy produkt",
+                    kcal: p.nutriments["energy-kcal_100g"] || 0,
+                    b: p.nutriments["proteins_100g"] || 0,
+                    s: p.nutriments["carbohydrates_100g"] || 0,
+                    t: p.nutriments["fat_100g"] || 0
+                };
+                document.getElementById('pName').innerText = activeP.name;
+                document.getElementById('resArea').style.display = 'block';
+                document.getElementById('grams').value = 100;
+                recalc();
+            } else { alert("Nič sa nenašlo."); }
         });
     }
 
-    function calcMacros() {
-        if (!activeProduct) return;
+    function recalc() {
+        if (!activeP) return;
         let g = document.getElementById('grams').value || 0;
         let f = g / 100;
-        document.getElementById('macroPreview').innerText = `Kcal: ${(activeProduct.kcal * f).toFixed(0)} | B: ${(activeProduct.prot * f).toFixed(1)}g | S: ${(activeProduct.carb * f).toFixed(1)}g | T: ${(activeProduct.fat * f).toFixed(1)}g`;
+        document.getElementById('macros').innerHTML = 
+            `Kcal: ${(activeP.kcal * f).toFixed(0)} | B: ${(activeP.b * f).toFixed(1)}g | S: ${(activeP.s * f).toFixed(1)}g | T: ${(activeP.t * f).toFixed(1)}g`;
     }
 
-    function handleProduct(p) {
-        activeProduct = {
-            name: p.product_name,
-            kcal: p.nutriments["energy-kcal_100g"] || 0,
-            prot: p.nutriments["proteins_100g"] || 0,
-            carb: p.nutriments["carbohydrates_100g"] || 0,
-            fat: p.nutriments["fat_100g"] || 0
-        };
-        document.getElementById('productName').innerText = activeProduct.name;
-        document.getElementById('resultArea').style.display = 'block';
-    }
-
-    function addConfirmed() {
+    function save() {
         let g = document.getElementById('grams').value || 100;
         let f = g / 100;
-        dailyLog.push({ id: Date.now(), name: activeProduct.name, kcal: (activeProduct.kcal * f).toFixed(0), b: (activeProduct.prot * f).toFixed(1), s: (activeProduct.carb * f).toFixed(1), t: (activeProduct.fat * f).toFixed(1) });
-        localStorage.setItem('dailyLog', JSON.stringify(dailyLog));
-        renderLog();
-        document.getElementById('resultArea').style.display = 'none';
+        history.push({ 
+            id: Date.now(),
+            name: activeP.name, 
+            info: `${(activeP.kcal * f).toFixed(0)} kcal` 
+        });
+        localStorage.setItem('h', JSON.stringify(history));
+        updateLog();
     }
 
-    function deleteItem(id) {
-        dailyLog = dailyLog.filter(i => i.id !== id);
-        localStorage.setItem('dailyLog', JSON.stringify(dailyLog));
-        renderLog();
+    function del(id) {
+        history = history.filter(i => i.id !== id);
+        localStorage.setItem('h', JSON.stringify(history));
+        updateLog();
     }
 
-    function renderLog() {
-        let list = document.getElementById('logList');
-        let t = {kcal:0, b:0, s:0, t:0};
-        list.innerHTML = dailyLog.map(i => {
-            t.kcal += parseFloat(i.kcal); t.b += parseFloat(i.b); t.s += parseFloat(i.s); t.t += parseFloat(i.t);
-            return `<div class="log-item"><span>${i.name} (${i.kcal} kcal)</span><button class="delete-btn" onclick="deleteItem(${i.id})">X</button></div>`;
-        }).join('');
-        document.getElementById('totalMacros').innerText = `Kcal: ${t.kcal.toFixed(0)} | B: ${t.b.toFixed(1)}g | S: ${t.s.toFixed(1)}g | T: ${t.t.toFixed(1)}g`;
+    function updateLog() {
+        document.getElementById('log').innerHTML = history.map(i => 
+            `<div class="log-item"><span>${i.name} (${i.info})</span><button class="delete-btn" onclick="del(${i.id})">X</button></div>`).join('');
     }
 
-    renderLog();
+    updateLog();
 </script>
 </body>
 </html>
