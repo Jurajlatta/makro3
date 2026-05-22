@@ -3,17 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NutriTab</title>
+    <title>NutriTracker SK</title>
     <style>
-        body { font-family: -apple-system, sans-serif; margin: 0; padding: 10px; background: #fff; }
-        #search-bar { width: 100%; padding: 15px; font-size: 18px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; }
-        .res { padding: 15px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; }
-        .res img { width: 45px; height: 45px; margin-right: 15px; border-radius: 8px; background: #eee; }
+        body { font-family: -apple-system, sans-serif; margin: 0; padding: 10px; background: #f9f9f9; }
+        #q { width: 100%; padding: 15px; font-size: 16px; border: 1px solid #ccc; border-radius: 10px; box-sizing: border-box; }
+        .res { padding: 12px; border-bottom: 1px solid #eee; display: flex; align-items: center; background: white; margin-top: 5px; border-radius: 8px; }
+        .res img { width: 50px; height: 50px; margin-right: 15px; object-fit: contain; }
     </style>
 </head>
 <body>
 
-<input type="text" id="q" placeholder="Hľadať potravinu..." oninput="fastSearch()">
+<input type="text" id="q" placeholder="Hľadať potravinu (napr. tvaroh)..." oninput="fastSearch()">
 <div id="results"></div>
 
 <script>
@@ -21,19 +21,15 @@
     function fastSearch() {
         clearTimeout(debounce);
         const q = document.getElementById('q').value;
-        if (q.length < 2) return; // Začne hľadať už po 2 písmenách
+        if (q.length < 3) {
+            document.getElementById('results').innerHTML = '';
+            return;
+        }
 
         debounce = setTimeout(async () => {
-            const res = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1&page_size=6&fields=product_name,image_small_url`);
-            const data = await res.json();
-            document.getElementById('results').innerHTML = data.products.map(p => `
-                <div class="res">
-                    <img src="${p.image_small_url || ''}" onerror="this.style.display='none'">
-                    <span>${p.product_name || 'Bez názvu'}</span>
-                </div>
-            `).join('');
-        }, 200); // 200ms je "sweet spot" pre rýchlosť
-    }
-</script>
-</body>
-</html>
+            // lc=sk a cc=sk vynúti hľadanie v slovenskej databáze
+            const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1&page_size=6&lc=sk&cc=sk&fields=product_name,image_small_url`;
+            
+            try {
+                const res = await fetch(url);
+                const data = await res
